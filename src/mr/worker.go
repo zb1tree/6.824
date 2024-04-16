@@ -1,10 +1,13 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-
+import (
+	"fmt"
+	"hash/fnv"
+	"io"
+	"log"
+	"net/rpc"
+	"os"
+)
 
 //
 // Map functions return a slice of KeyValue.
@@ -24,18 +27,79 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-
 //
 // main/mrworker.go calls this function.
 //
+// for sorting by key.采用已有定义
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
+
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-
+	reply, status := CallJoin()
+	if status {
+		task := reply.task
+		if task.method == 0 {
+			//
+			// read each input file,
+			// pass it to Map,
+			// accumulate the intermediate Map output.
+			//
+			intermediate := []KeyValue{}
+			for _, filename := range os.Args[2:] {
+				file, err := os.Open(filename)
+				if err != nil {
+					log.Fatalf("cannot open %v", filename)
+				}
+				content, err := io.ReadAll(file)
+				if err != nil {
+					log.Fatalf("cannot read %v", filename)
+				}
+				file.Close()
+				kva := mapf(filename, string(content))
+				intermediate = append(intermediate, kva...)
+			}
+			//传递结果
+			MapArgs := RPCArgs{}
+			MapArgs.event = 1
+			MapArgs.kvdata = intermediate
+			MapReply := RPCReply{}
+			ok := MapTransmit(intermediate, &MapArgs, &MapReply)
+			if ok {
+				fmt.Printf("map data %s transmitted\n", reply.task.obj)
+				return
+			} else {
+				fmt.Printf("map data %s transmit failed\n", reply.task.obj)
+				return
+			}
+		}
+	} else {
+		return
+	}
 	// Your worker implementation here.
 
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
 
+}
+
+//向协调进程发送一个信号表示新的worker进程加入，从返回值获取分配的任务
+func CallJoin() (RPCReply, bool) {
+	args := RPCArgs{}
+	args.event = 0
+	reply := RPCReply{}
+	ok := call("Coordinator.JoinWorker", &args, &reply)
+	if ok {
+		fmt.Printf("worker joined\n")
+		return reply, false
+	} else {
+		fmt.Printf("worker join failed!\n")
+		return reply, true
+	}
 }
 
 //
