@@ -16,6 +16,18 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
+//定义task，method表示采取的方法，0:map 1:redduce
+//定义event 0:map任务完成 1:reduce任务完成
+const MAP=0
+const REDUCE=1
+const MapData="Coordinator.GetMapData"
+const ReduceData="Coordinator.GetReduceData"
+//
+//Reduce功能获取的kv对
+type RKeyValue struct{
+	Key string
+	Value []string
+}
 
 //
 // use ihash(key) % NReduce to choose the reduce
@@ -42,6 +54,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	reply, status := CallJoin()
 	if status {
+		//获取任务为map
 		task := reply.task
 		if task.method == 0 {
 			//
@@ -50,30 +63,43 @@ func Worker(mapf func(string, string) []KeyValue,
 			// accumulate the intermediate Map output.
 			//
 			intermediate := []KeyValue{}
-			for _, filename := range os.Args[2:] {
-				file, err := os.Open(filename)
-				if err != nil {
-					log.Fatalf("cannot open %v", filename)
-				}
-				content, err := io.ReadAll(file)
-				if err != nil {
-					log.Fatalf("cannot read %v", filename)
-				}
-				file.Close()
-				kva := mapf(filename, string(content))
-				intermediate = append(intermediate, kva...)
+			filename:=task.obj.(string)
+			file, err := os.Open(filename)
+			if err != nil {
+				log.Fatalf("cannot open %v", filename)
 			}
-			//传递结果
+			content, err := io.ReadAll(file)
+			if err != nil {
+				log.Fatalf("cannot read %v", filename)
+			}
+			file.Close()
+			kva := mapf(filename, string(content))
+			intermediate = append(intermediate, kva...)
+			//传递map结果
 			MapArgs := RPCArgs{}
-			MapArgs.event = 1
+			MapArgs.event = MAP
 			MapArgs.kvdata = intermediate
 			MapReply := RPCReply{}
-			ok := MapTransmit(intermediate, &MapArgs, &MapReply)
+			ok := MapTransmit(&MapArgs, &MapReply)
 			if ok {
 				fmt.Printf("map data %s transmitted\n", reply.task.obj)
 				return
 			} else {
 				fmt.Printf("map data %s transmit failed\n", reply.task.obj)
+				return
+			}
+		} elif task.method==1{
+			data:=task.obj.(RKeyValue)
+			result=reducef(data.Key,data.Value)
+			ReduceArgs:=RPCArgs{}
+			ReduceArgs.event=REDUCE
+			ReduceReply:=RPCReply{}
+			ok:=ReduceTransmit(&ReduceArgs,&ReduceReply)
+			if ok {
+				fmt.Printf("reduce data %s transmitted\n", data.Key)
+				return
+			} else {
+				fmt.Printf("map data %s transmit failed\n", data.Key)
 				return
 			}
 		}
@@ -86,6 +112,24 @@ func Worker(mapf func(string, string) []KeyValue,
 	// CallExample()
 
 }
+
+type RPCArgs struct {
+	event  int
+	data any
+}
+
+//定义任务，method表示采取的方法，0:map 1:redduce
+const MAP=0
+const REDUCE=1
+type task struct {
+	method int
+	obj    any
+}
+type RPCReply struct {
+	task   task
+	data any
+}
+
 
 //向协调进程发送一个信号表示新的worker进程加入，从返回值获取分配的任务
 func CallJoin() (RPCReply, bool) {
@@ -102,6 +146,28 @@ func CallJoin() (RPCReply, bool) {
 	}
 }
 
+//定义map任务信息传递接口
+func MapTransmit(*RPCArgs, *RPCReply) bool {
+	ok:=call(MapData,RPCArgs,RPCReply)
+	if ok {
+		fmt.Printf("Map data transmitted\n")
+		return true
+	} else {
+		fmt.Printf("Map data transmit failed!\n")
+		return false
+	}
+}
+//定义reduce任务信息传递接口
+func ReduceTransmit(*RPCArgs,*RPCReply) bool{
+	ok:=call(ReduceData,RPCArgs,RPCReply)
+	if ok {
+		fmt.Printf("Reduce data transmitted\n")
+		return true
+	} else {
+		fmt.Printf("Reduce data transmit failed!\n")
+		return false
+	}
+}
 //
 // example function to show how to make an RPC call to the coordinator.
 //
