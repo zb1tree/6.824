@@ -20,8 +20,10 @@ type KeyValue struct {
 //定义event 0:map任务完成 1:reduce任务完成
 const MAP=0
 const REDUCE=1
+const DONE=2
 const MapData="Coordinator.GetMapData"
 const ReduceData="Coordinator.GetReduceData"
+const JoinWorker="Coordinator.JoinWorker"
 //
 //Reduce功能获取的kv对
 type RKeyValue struct{
@@ -53,10 +55,10 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	reply, status := CallJoin()
-	if status {
+	while status {
 		//获取任务为map
 		task := reply.task
-		if task.method == 0 {
+		if task.method == MAP {
 			//
 			// read each input file,
 			// pass it to Map,
@@ -78,7 +80,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			//传递map结果
 			MapArgs := RPCArgs{}
 			MapArgs.event = MAP
-			MapArgs.kvdata = intermediate
+			MapArgs.data = intermediate
 			MapReply := RPCReply{}
 			ok := MapTransmit(&MapArgs, &MapReply)
 			if ok {
@@ -88,11 +90,13 @@ func Worker(mapf func(string, string) []KeyValue,
 				fmt.Printf("map data %s transmit failed\n", reply.task.obj)
 				return
 			}
-		} elif task.method==1{
+		//执行reduce任务
+		} elif task.method==REDUCE{
 			data:=task.obj.(RKeyValue)
 			result=reducef(data.Key,data.Value)
 			ReduceArgs:=RPCArgs{}
 			ReduceArgs.event=REDUCE
+			ReduceArgs.data=KeyValue{Key:data.Key,Value:result}
 			ReduceReply:=RPCReply{}
 			ok:=ReduceTransmit(&ReduceArgs,&ReduceReply)
 			if ok {
@@ -102,6 +106,9 @@ func Worker(mapf func(string, string) []KeyValue,
 				fmt.Printf("map data %s transmit failed\n", data.Key)
 				return
 			}
+		}elif task.method==DONE{
+			fmt.Printf("task over!\n")
+			return
 		}
 	} else {
 		return
@@ -136,13 +143,13 @@ func CallJoin() (RPCReply, bool) {
 	args := RPCArgs{}
 	args.event = 0
 	reply := RPCReply{}
-	ok := call("Coordinator.JoinWorker", &args, &reply)
+	ok := call(JoinWorker, &args, &reply)
 	if ok {
 		fmt.Printf("worker joined\n")
-		return reply, false
+		return reply, true
 	} else {
 		fmt.Printf("worker join failed!\n")
-		return reply, true
+		return reply, false
 	}
 }
 

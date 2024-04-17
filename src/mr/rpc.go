@@ -27,22 +27,18 @@ type ExampleReply struct {
 // Add your RPC definitions here.
 type RPCArgs struct {
 	event  int
-	kvdata ByKey
+	data any
 }
 
 //定义任务，method表示采取的方法，0:map 1:redduce
+const MAP=0
+const REDUCE=1
 type task struct {
 	method int
-	obj    string
+	obj    any
 }
 type RPCReply struct {
 	task   task
-	kvdata ByKey
-}
-
-//定义map任务信息传递接口
-func MapTransmit(ByKey, *RPCArgs, *RPCReply) bool {
-	return true
 }
 
 // Cook up a unique-ish UNIX-domain socket name
