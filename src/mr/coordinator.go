@@ -35,19 +35,19 @@ func (c *Coordinator)JoinWorker(args *RPCArgs,reply *RPCReply) error{
 	if len(c.MapToDo)!=0{//仍有需要完成的任务
 		reply.task.method=MAP
 		reply.task.obj=c.MapToDo[0]
-		c.MapProcess[c.MapToDo[0]]=time.now()
+		c.MapProcess[c.MapToDo[0]]=time.Now()
 		c.MapToDo=c.MapToDo[1:]
-	}elif len(c.ReduceToDo)!=0{
+	}else if len(c.ReduceToDo)!=0{
 		reply.task.method=REDUCE
 		reply.task.obj=RKeyValue{Key:c.ReduceToDo[0],Value:c.MidResults[c.ReduceToDo][:]}
-		c.ReduceProcess[c.ReduceToDo[0]]=time.now()
+		c.ReduceProcess[c.ReduceToDo[0]]=time.Now()
 		c.ReduceToDo=c.ReduceToDo[1:]
-	}elif c.Done(){
-		reply.task.event=over
+	}else if c.Done(){
+		reply.task.method=DONE
 	}else{//任务均被占用的情况下检查超时任务
 		if len(c.MapProcess)!=0{
 			for task:= range c.MapProcess{
-				if time.since(c.MapProcess[task]).Second()>=10{
+				if time.Since(c.MapProcess[task])*time.Second>=10{
 					delete(c.MapProcess,task)
 					c.MapToDo=append(c.MapToDo,task)
 				}
@@ -55,7 +55,7 @@ func (c *Coordinator)JoinWorker(args *RPCArgs,reply *RPCReply) error{
 		}
 		if len(c.ReduceProcess)!=0{
 			for task:=range c.ReduceProcess{
-				if time.since(c.ReduceProcess[task]).Second>=10{
+				if time.Since(c.ReduceProcess[task]).Second()>=10{
 					delete(c.ReduceProcess[task])
 					c.ReduceToDo=append(c.ReduceToDo,task)
 				}
@@ -67,8 +67,8 @@ func (c *Coordinator)JoinWorker(args *RPCArgs,reply *RPCReply) error{
 }
 //接收map任务结果
 func (c *Coordinator)GetMapData(args *RPCArgs,reply *RPCReply) error{
-	for kv=:args.data{
-		_,ok:=c.MidResults[kv.Key]
+	for kv:= range args.data.(ByKey){
+		_,ok:=c.MidResults{kv.Key}
 		if ok{
 			c.MidResults[kv.Key]=append(c.MidResults[kv.Key],kv.Value)
 		}else{

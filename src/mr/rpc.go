@@ -27,15 +27,13 @@ type ExampleReply struct {
 // Add your RPC definitions here.
 type RPCArgs struct {
 	event  int
-	data any
+	data interface{}
 }
 
 //定义任务，method表示采取的方法，0:map 1:redduce
-const MAP=0
-const REDUCE=1
 type task struct {
 	method int
-	obj    any
+	obj    interface{}
 }
 type RPCReply struct {
 	task   task

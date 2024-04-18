@@ -55,7 +55,8 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	reply, status := CallJoin()
-	while status {
+	fmt.Printf("%v %v",reply,status)
+	for status {
 		//获取任务为map
 		task := reply.task
 		if task.method == MAP {
@@ -91,7 +92,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				return
 			}
 		//执行reduce任务
-		} elif task.method==REDUCE{
+		} else if task.method==REDUCE{
 			data:=task.obj.(RKeyValue)
 			result=reducef(data.Key,data.Value)
 			ReduceArgs:=RPCArgs{}
@@ -106,35 +107,16 @@ func Worker(mapf func(string, string) []KeyValue,
 				fmt.Printf("map data %s transmit failed\n", data.Key)
 				return
 			}
-		}elif task.method==DONE{
+		}else if task.method==DONE{
 			fmt.Printf("task over!\n")
 			return
 		}
-	} else {
-		return
 	}
+	return
 	// Your worker implementation here.
 
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
-
-}
-
-type RPCArgs struct {
-	event  int
-	data any
-}
-
-//定义任务，method表示采取的方法，0:map 1:redduce
-const MAP=0
-const REDUCE=1
-type task struct {
-	method int
-	obj    any
-}
-type RPCReply struct {
-	task   task
-	data any
 }
 
 
