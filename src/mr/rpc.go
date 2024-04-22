@@ -26,17 +26,17 @@ type ExampleReply struct {
 
 // Add your RPC definitions here.
 type RPCArgs struct {
-	event  int
-	data interface{}
+	Event int
+	Data  interface{}
 }
 
-//定义任务，method表示采取的方法，0:map 1:redduce
+// 定义任务，method表示采取的方法，0:map 1:redduce
 type task struct {
-	method int
-	obj    interface{}
+	Method int
+	Obj    interface{}
 }
 type RPCReply struct {
-	task   task
+	Task task
 }
 
 // Cook up a unique-ish UNIX-domain socket name

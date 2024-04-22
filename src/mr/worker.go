@@ -9,39 +9,35 @@ import (
 	"os"
 )
 
-//
 // Map functions return a slice of KeyValue.
-//
 type KeyValue struct {
 	Key   string
 	Value string
 }
-//定义task，method表示采取的方法，0:map 1:redduce
-//定义event 0:map任务完成 1:reduce任务完成
-const MAP=0
-const REDUCE=1
-const DONE=2
-const MapData="Coordinator.GetMapData"
-const ReduceData="Coordinator.GetReduceData"
-const JoinWorker="Coordinator.JoinWorker"
-//
-//Reduce功能获取的kv对
-type RKeyValue struct{
-	Key string
+
+// 定义task，method表示采取的方法，0:map 1:redduce
+// 定义event 0:map任务完成 1:reduce任务完成
+const MAP = 0
+const REDUCE = 1
+const DONE = 2
+const MapData = "Coordinator.GetMapData"
+const ReduceData = "Coordinator.GetReduceData"
+const JoinWorker = "Coordinator.JoinWorker"
+
+// Reduce功能获取的kv对
+type RKeyValue struct {
+	Key   string
 	Value []string
 }
 
-//
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
-//
 func ihash(key string) int {
 	h := fnv.New32a()
 	h.Write([]byte(key))
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-//
 // main/mrworker.go calls this function.
 //
 // for sorting by key.采用已有定义
@@ -55,18 +51,18 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	reply, status := CallJoin()
-	fmt.Printf("%v %v",reply,status)
+	fmt.Printf("%v %v", reply, status)
 	for status {
 		//获取任务为map
-		task := reply.task
-		if task.method == MAP {
+		task := reply.Task
+		if task.Method == MAP {
 			//
 			// read each input file,
 			// pass it to Map,
 			// accumulate the intermediate Map output.
 			//
 			intermediate := []KeyValue{}
-			filename:=task.obj.(string)
+			filename := task.Obj.(string)
 			file, err := os.Open(filename)
 			if err != nil {
 				log.Fatalf("cannot open %v", filename)
@@ -80,26 +76,26 @@ func Worker(mapf func(string, string) []KeyValue,
 			intermediate = append(intermediate, kva...)
 			//传递map结果
 			MapArgs := RPCArgs{}
-			MapArgs.event = MAP
-			MapArgs.data = intermediate
+			MapArgs.Event = MAP
+			MapArgs.Data = intermediate
 			MapReply := RPCReply{}
 			ok := MapTransmit(&MapArgs, &MapReply)
 			if ok {
-				fmt.Printf("map data %s transmitted\n", reply.task.obj)
+				fmt.Printf("map data %s transmitted\n", reply.Task.Obj)
 				return
 			} else {
-				fmt.Printf("map data %s transmit failed\n", reply.task.obj)
+				fmt.Printf("map data %s transmit failed\n", reply.Task.Obj)
 				return
 			}
-		//执行reduce任务
-		} else if task.method==REDUCE{
-			data:=task.obj.(RKeyValue)
-			result=reducef(data.Key,data.Value)
-			ReduceArgs:=RPCArgs{}
-			ReduceArgs.event=REDUCE
-			ReduceArgs.data=KeyValue{Key:data.Key,Value:result}
-			ReduceReply:=RPCReply{}
-			ok:=ReduceTransmit(&ReduceArgs,&ReduceReply)
+			//执行reduce任务
+		} else if task.Method == REDUCE {
+			data := task.Obj.(RKeyValue)
+			result := reducef(data.Key, data.Value)
+			ReduceArgs := RPCArgs{}
+			ReduceArgs.Event = REDUCE
+			ReduceArgs.Data = KeyValue{Key: data.Key, Value: result}
+			ReduceReply := RPCReply{}
+			ok := ReduceTransmit(&ReduceArgs, &ReduceReply)
 			if ok {
 				fmt.Printf("reduce data %s transmitted\n", data.Key)
 				return
@@ -107,7 +103,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				fmt.Printf("map data %s transmit failed\n", data.Key)
 				return
 			}
-		}else if task.method==DONE{
+		} else if task.Method == DONE {
 			fmt.Printf("task over!\n")
 			return
 		}
@@ -119,11 +115,10 @@ func Worker(mapf func(string, string) []KeyValue,
 	// CallExample()
 }
 
-
-//向协调进程发送一个信号表示新的worker进程加入，从返回值获取分配的任务
+// 向协调进程发送一个信号表示新的worker进程加入，从返回值获取分配的任务
 func CallJoin() (RPCReply, bool) {
 	args := RPCArgs{}
-	args.event = 0
+	args.Event = 0
 	reply := RPCReply{}
 	ok := call(JoinWorker, &args, &reply)
 	if ok {
@@ -135,9 +130,9 @@ func CallJoin() (RPCReply, bool) {
 	}
 }
 
-//定义map任务信息传递接口
-func MapTransmit(*RPCArgs, *RPCReply) bool {
-	ok:=call(MapData,RPCArgs,RPCReply)
+// 定义map任务信息传递接口
+func MapTransmit(args *RPCArgs, reply *RPCReply) bool {
+	ok := call(MapData, args, reply)
 	if ok {
 		fmt.Printf("Map data transmitted\n")
 		return true
@@ -146,9 +141,10 @@ func MapTransmit(*RPCArgs, *RPCReply) bool {
 		return false
 	}
 }
-//定义reduce任务信息传递接口
-func ReduceTransmit(*RPCArgs,*RPCReply) bool{
-	ok:=call(ReduceData,RPCArgs,RPCReply)
+
+// 定义reduce任务信息传递接口
+func ReduceTransmit(args *RPCArgs, reply *RPCReply) bool {
+	ok := call(ReduceData, args, reply)
 	if ok {
 		fmt.Printf("Reduce data transmitted\n")
 		return true
@@ -157,11 +153,10 @@ func ReduceTransmit(*RPCArgs,*RPCReply) bool{
 		return false
 	}
 }
-//
+
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func CallExample() {
 
 	// declare an argument structure.
@@ -186,11 +181,9 @@ func CallExample() {
 	}
 }
 
-//
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-//
 func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
 	sockname := coordinatorSock()

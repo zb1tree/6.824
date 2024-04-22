@@ -1,89 +1,93 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
+	"sort"
 	"time"
 )
+
 type Timer map[string]time.Time
 type Coordinator struct {
 	// Your definitions here.
-	MapToDo []string
-	ReduceToDo []string
-	MapProcess Timer
+	MapToDo       []string
+	ReduceToDo    []string
+	MapProcess    Timer
 	ReduceProcess Timer
-	MidResults map[string][]string
-	result ByKey
+	MidResults    map[string][]string
+	result        ByKey
 }
 
 // Your code here -- RPC handlers for the worker to call.
 
-//
 // an example RPC handler.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
 }
-//为新加入的worker发送任务
-func (c *Coordinator)JoinWorker(args *RPCArgs,reply *RPCReply) error{
-	if len(c.MapToDo)!=0{//仍有需要完成的任务
-		reply.task.method=MAP
-		reply.task.obj=c.MapToDo[0]
-		c.MapProcess[c.MapToDo[0]]=time.Now()
-		c.MapToDo=c.MapToDo[1:]
-	}else if len(c.ReduceToDo)!=0{
-		reply.task.method=REDUCE
-		reply.task.obj=RKeyValue{Key:c.ReduceToDo[0],Value:c.MidResults[c.ReduceToDo][:]}
-		c.ReduceProcess[c.ReduceToDo[0]]=time.Now()
-		c.ReduceToDo=c.ReduceToDo[1:]
-	}else if c.Done(){
-		reply.task.method=DONE
-	}else{//任务均被占用的情况下检查超时任务
-		if len(c.MapProcess)!=0{
-			for task:= range c.MapProcess{
-				if time.Since(c.MapProcess[task])*time.Second>=10{
-					delete(c.MapProcess,task)
-					c.MapToDo=append(c.MapToDo,task)
-				}
+
+// 为新加入的worker发送任务
+func (c *Coordinator) JoinWorker(args *RPCArgs, reply *RPCReply) error {
+	if len(c.MapToDo) != 0 { //仍有需要完成的任务
+		reply.Task.Method = MAP
+		reply.Task.Obj = c.MapToDo[0]
+		c.MapProcess[c.MapToDo[0]] = time.Now()
+		c.MapToDo = c.MapToDo[1:]
+	} else if len(c.MapProcess) != 0 {
+		for task := range c.MapProcess {
+			if time.Since(c.MapProcess[task])*time.Second >= 10 {
+				delete(c.MapProcess, task)
+				c.MapToDo = append(c.MapToDo, task)
 			}
 		}
-		if len(c.ReduceProcess)!=0{
-			for task:=range c.ReduceProcess{
-				if time.Since(c.ReduceProcess[task]).Second()>=10{
-					delete(c.ReduceProcess[task])
-					c.ReduceToDo=append(c.ReduceToDo,task)
-				}
+	} else if len(c.ReduceToDo) != 0 {
+		reply.Task.Method = REDUCE
+		reply.Task.Obj = RKeyValue{Key: c.ReduceToDo[0], Value: c.MidResults[c.ReduceToDo[0]][:]}
+		c.ReduceProcess[c.ReduceToDo[0]] = time.Now()
+		c.ReduceToDo = c.ReduceToDo[1:]
+	} else if len(c.ReduceProcess) != 0 {
+		for task := range c.ReduceProcess {
+			if time.Since(c.ReduceProcess[task]).Seconds() >= 10 {
+				delete(c.ReduceProcess, task)
+				c.ReduceToDo = append(c.ReduceToDo, task)
 			}
 		}
-		return c.JoinWorker(args,reply)
+	} else if c.Done() {
+		reply.Task.Method = DONE
+	} else { //任务均被占用的情况下检查超时任务
+
+		return c.JoinWorker(args, reply)
 	}
 	return nil
 }
-//接收map任务结果
-func (c *Coordinator)GetMapData(args *RPCArgs,reply *RPCReply) error{
-	for kv:= range args.data.(ByKey){
-		_,ok:=c.MidResults{kv.Key}
-		if ok{
-			c.MidResults[kv.Key]=append(c.MidResults[kv.Key],kv.Value)
-		}else{
-			c.MidResults[kv.Key]=[]string{kv.Value}
+
+// 接收map任务结果
+func (c *Coordinator) GetMapData(args *RPCArgs, reply *RPCReply) error {
+	for _, kv := range args.Data.(ByKey) {
+		_, ok := c.MidResults[kv.Key]
+		if ok {
+			c.MidResults[kv.Key] = append(c.MidResults[kv.Key], kv.Value)
+		} else {
+			c.MidResults[kv.Key] = []string{kv.Value}
 		}
 	}
+	return nil
 }
-//接收reduce结果
-func (c *Coordinator)GetReduceData(args *RPCArgs,reply *RPCReply) error{
-	kv=args.data.(KeyValue)
-	c.result=append(c.result,kv)
+
+// 接收reduce结果
+func (c *Coordinator) GetReduceData(args *RPCArgs, reply *RPCReply) error {
+	kv := args.Data.(KeyValue)
+	c.result = append(c.result, kv)
+	return nil
 }
-//
+
 // start a thread that listens for RPCs from worker.go
-//
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
@@ -97,19 +101,18 @@ func (c *Coordinator) server() {
 	go http.Serve(l, nil)
 }
 
-//
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
-//任务结束输出结果
+// 任务结束输出结果
 func (c *Coordinator) Done() bool {
 	ret := false
-	if len(c.MapToDo)==0 && len(c.ReduceToDo)==0 && len(c.MapProcess)==0 &&len(c.MapProcess)==0{
-		ret=true
+	if len(c.MapToDo) == 0 && len(c.ReduceToDo) == 0 && len(c.MapProcess) == 0 && len(c.MapProcess) == 0 {
+		ret = true
 		sort.Sort(c.result)
 		oname := "mr-out-0"
 		ofile, _ := os.Create(oname)
-		for kv:=range c.result{
-			fmt.Fprintf(ofile,"%v %v",kv.Key,kv.Value)
+		for _, kv := range c.result {
+			fmt.Fprintf(ofile, "%v %v", kv.Key, kv.Value)
 		}
 	}
 	// Your code here.
@@ -117,16 +120,12 @@ func (c *Coordinator) Done() bool {
 	return ret
 }
 
-//
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
-//
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-	c.MapToDo=append(MapToDo,files...)
-	c.MapIndex=0
-	c.ReduceIndex=0
+	c.MapToDo = append(c.MapToDo, files...)
 	// Your code here.
 	c.server()
 	return &c
