@@ -1,6 +1,8 @@
 package mr
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -52,9 +54,11 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	reply, status := CallJoin()
 	fmt.Printf("%v %v", reply, status)
+	var filename string
+	task := task{}
 	for status {
 		//获取任务为map
-		task := reply.Task
+		task = reply.Task
 		if task.Method == MAP {
 			//
 			// read each input file,
@@ -62,7 +66,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			// accumulate the intermediate Map output.
 			//
 			intermediate := []KeyValue{}
-			filename := task.Obj.(string)
+			filename = task.Obj.(string)
 			file, err := os.Open(filename)
 			if err != nil {
 				log.Fatalf("cannot open %v", filename)
@@ -76,39 +80,33 @@ func Worker(mapf func(string, string) []KeyValue,
 			intermediate = append(intermediate, kva...)
 			//传递map结果
 			MapArgs := RPCArgs{}
-			MapArgs.Event = MAP
-			MapArgs.Data = intermediate
-			MapReply := RPCReply{}
-			ok := MapTransmit(&MapArgs, &MapReply)
+			MapArgs.Kvdata = intermediate
+			MapArgs.Index = filename
+			reply = RPCReply{}
+			ok := MapTransmit(&MapArgs, &reply)
 			if ok {
 				fmt.Printf("map data %s transmitted\n", reply.Task.Obj)
-				return
 			} else {
 				fmt.Printf("map data %s transmit failed\n", reply.Task.Obj)
-				return
 			}
 			//执行reduce任务
 		} else if task.Method == REDUCE {
 			data := task.Obj.(RKeyValue)
 			result := reducef(data.Key, data.Value)
 			ReduceArgs := RPCArgs{}
-			ReduceArgs.Event = REDUCE
-			ReduceArgs.Data = KeyValue{Key: data.Key, Value: result}
+			ReduceArgs.Kvdata = append(ReduceArgs.Kvdata, KeyValue{Key: data.Key, Value: result})
 			ReduceReply := RPCReply{}
 			ok := ReduceTransmit(&ReduceArgs, &ReduceReply)
 			if ok {
 				fmt.Printf("reduce data %s transmitted\n", data.Key)
-				return
 			} else {
 				fmt.Printf("map data %s transmit failed\n", data.Key)
-				return
 			}
 		} else if task.Method == DONE {
 			fmt.Printf("task over!\n")
 			return
 		}
 	}
-	return
 	// Your worker implementation here.
 
 	// uncomment to send the Example RPC to the coordinator.
@@ -118,7 +116,6 @@ func Worker(mapf func(string, string) []KeyValue,
 // 向协调进程发送一个信号表示新的worker进程加入，从返回值获取分配的任务
 func CallJoin() (RPCReply, bool) {
 	args := RPCArgs{}
-	args.Event = 0
 	reply := RPCReply{}
 	ok := call(JoinWorker, &args, &reply)
 	if ok {
@@ -132,6 +129,7 @@ func CallJoin() (RPCReply, bool) {
 
 // 定义map任务信息传递接口
 func MapTransmit(args *RPCArgs, reply *RPCReply) bool {
+	fmt.Printf("Map transmit start\n")
 	ok := call(MapData, args, reply)
 	if ok {
 		fmt.Printf("Map data transmitted\n")
@@ -144,6 +142,12 @@ func MapTransmit(args *RPCArgs, reply *RPCReply) bool {
 
 // 定义reduce任务信息传递接口
 func ReduceTransmit(args *RPCArgs, reply *RPCReply) bool {
+	fmt.Printf("Reduce transmit start\n")
+	buf := new(bytes.Buffer)
+	enc := gob.NewEncoder(buf)
+	if err := enc.Encode(args); err != nil {
+		log.Fatal("ecnode error\n", err)
+	}
 	ok := call(ReduceData, args, reply)
 	if ok {
 		fmt.Printf("Reduce data transmitted\n")

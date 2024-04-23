@@ -7,6 +7,7 @@ package mr
 //
 
 import (
+	"encoding/gob"
 	"os"
 	"strconv"
 )
@@ -26,11 +27,11 @@ type ExampleReply struct {
 
 // Add your RPC definitions here.
 type RPCArgs struct {
-	Event int
-	Data  interface{}
+	Index  string
+	Kvdata ByKey
 }
 
-// 定义任务，method表示采取的方法，0:map 1:redduce
+// 定义任务，method表示采取的方法，0:map 1:redduce 2:done
 type task struct {
 	Method int
 	Obj    interface{}
@@ -38,6 +39,8 @@ type task struct {
 type RPCReply struct {
 	Task task
 }
+
+func init() { gob.Register(RKeyValue{}) }
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.

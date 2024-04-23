@@ -5,11 +5,19 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "go run mrworker.go wc.so",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "/home/b1tree/6.824/src/main/mrworker.go",
+            "args": ["wc.so"]
+        },
+        {
             "name": "go run mrcoordinator.go pg-*.txt",
             "type": "go",
             "request": "launch",
-            "mode": "auto",
-            "program": "/home/b1tree/6.5840/src/main/mrcoordinator.go",
+            "mode": "debug",
+            "program": "/home/b1tree/6.824/src/main/mrcoordinator.go",
             "cwd": "${workspaceFolder}",
             "args": [
                 "pg-being_ernest.txt",
