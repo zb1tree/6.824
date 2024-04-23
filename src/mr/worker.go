@@ -1,14 +1,13 @@
 package mr
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"log"
 	"net/rpc"
 	"os"
+	"strconv"
 )
 
 // Map functions return a slice of KeyValue.
@@ -53,7 +52,7 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	reply, status := CallJoin()
-	fmt.Printf("%v %v", reply, status)
+	//fmt.Printf("%v %v", reply, status)
 	var filename string
 	task := task{}
 	for status {
@@ -85,9 +84,9 @@ func Worker(mapf func(string, string) []KeyValue,
 			reply = RPCReply{}
 			ok := MapTransmit(&MapArgs, &reply)
 			if ok {
-				fmt.Printf("map data %s transmitted\n", reply.Task.Obj)
+				//fmt.Printf("map data %s transmitted\n", reply.Task.Obj)
 			} else {
-				fmt.Printf("map data %s transmit failed\n", reply.Task.Obj)
+				//fmt.Printf("map data %s transmit failed\n", reply.Task.Obj)
 			}
 			//执行reduce任务
 		} else if task.Method == REDUCE {
@@ -95,15 +94,17 @@ func Worker(mapf func(string, string) []KeyValue,
 			result := reducef(data.Key, data.Value)
 			ReduceArgs := RPCArgs{}
 			ReduceArgs.Kvdata = append(ReduceArgs.Kvdata, KeyValue{Key: data.Key, Value: result})
-			ReduceReply := RPCReply{}
-			ok := ReduceTransmit(&ReduceArgs, &ReduceReply)
+			ReduceArgs.Index = strconv.Itoa(ihash(data.Key))
+			reply = RPCReply{}
+			ok := ReduceTransmit(&ReduceArgs, &reply)
 			if ok {
-				fmt.Printf("reduce data %s transmitted\n", data.Key)
+				//fmt.Printf("reduce data %s transmitted\n", data.Key)
 			} else {
-				fmt.Printf("map data %s transmit failed\n", data.Key)
+				//fmt.Printf("map data %s transmit failed\n", data.Key)
 			}
 		} else if task.Method == DONE {
-			fmt.Printf("task over!\n")
+			status = false
+			//fmt.Printf("task over!\n")
 			return
 		}
 	}
@@ -119,41 +120,37 @@ func CallJoin() (RPCReply, bool) {
 	reply := RPCReply{}
 	ok := call(JoinWorker, &args, &reply)
 	if ok {
-		fmt.Printf("worker joined\n")
+		//fmt.Printf("worker joined\n")
 		return reply, true
 	} else {
-		fmt.Printf("worker join failed!\n")
+		//fmt.Printf("worker join failed!\n")
 		return reply, false
 	}
 }
 
 // 定义map任务信息传递接口
 func MapTransmit(args *RPCArgs, reply *RPCReply) bool {
-	fmt.Printf("Map transmit start\n")
+	//fmt.Printf("Map transmit start\n")
 	ok := call(MapData, args, reply)
 	if ok {
-		fmt.Printf("Map data transmitted\n")
+
+		//fmt.Printf("Map data transmitted\n")
 		return true
 	} else {
-		fmt.Printf("Map data transmit failed!\n")
+		//fmt.Printf("Map data transmit failed!\n")
 		return false
 	}
 }
 
 // 定义reduce任务信息传递接口
 func ReduceTransmit(args *RPCArgs, reply *RPCReply) bool {
-	fmt.Printf("Reduce transmit start\n")
-	buf := new(bytes.Buffer)
-	enc := gob.NewEncoder(buf)
-	if err := enc.Encode(args); err != nil {
-		log.Fatal("ecnode error\n", err)
-	}
+	//fmt.Printf("Reduce transmit start\n")
 	ok := call(ReduceData, args, reply)
 	if ok {
-		fmt.Printf("Reduce data transmitted\n")
+		//fmt.Printf("Reduce data transmitted\n")
 		return true
 	} else {
-		fmt.Printf("Reduce data transmit failed!\n")
+		//fmt.Printf("Reduce data transmit failed!\n")
 		return false
 	}
 }
@@ -179,9 +176,9 @@ func CallExample() {
 	ok := call("Coordinator.Example", &args, &reply)
 	if ok {
 		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
+		//fmt.Printf("reply.Y %v\n", reply.Y)
 	} else {
-		fmt.Printf("call failed!\n")
+		//fmt.Printf("call failed!\n")
 	}
 }
 

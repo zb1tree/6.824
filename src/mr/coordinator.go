@@ -28,6 +28,7 @@ type Coordinator struct {
 	MidResults    map[string][]string
 	Result        storage
 	NReduce       int
+	Mutex         int
 }
 
 func init() { gob.Register(KeyValue{}); gob.Register(ByKey{}) }
@@ -44,7 +45,11 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 
 // 为新加入的worker发送任务
 func (c *Coordinator) JoinWorker(args *RPCArgs, reply *RPCReply) error {
-	fmt.Printf("Worker join start\n")
+	//fmt.Printf("Worker join start\n")
+	for c.Mutex == 1 {
+		time.Sleep(time.Second)
+	}
+	c.Mutex = 1
 	for {
 		if len(c.MapToDo) != 0 { //仍有需要完成的任务
 			reply.Task.Method = MAP
@@ -59,7 +64,6 @@ func (c *Coordinator) JoinWorker(args *RPCArgs, reply *RPCReply) error {
 					c.MapToDo = append(c.MapToDo, task)
 				}
 			}
-			break
 		} else if len(c.ReduceToDo) != 0 {
 			reply.Task.Method = REDUCE
 			reply.Task.Obj = RKeyValue{Key: c.ReduceToDo[0], Value: c.MidResults[c.ReduceToDo[0]][:]}
@@ -73,16 +77,23 @@ func (c *Coordinator) JoinWorker(args *RPCArgs, reply *RPCReply) error {
 					c.ReduceToDo = append(c.ReduceToDo, task)
 				}
 			}
+		} else if c.Done() {
+			reply.Task.Method = DONE
 			break
 		} else {
 			time.Sleep(time.Second)
 		}
 	}
+	c.Mutex = 0
 	return nil
 }
 
 // 接收map任务结果
 func (c *Coordinator) GetMapData(args *RPCArgs, reply *RPCReply) error {
+	for c.Mutex == 1 {
+		time.Sleep(time.Second)
+	}
+	c.Mutex = 1
 	for _, kv := range args.Kvdata {
 		_, ok := c.MidResults[kv.Key]
 		if ok {
@@ -93,11 +104,16 @@ func (c *Coordinator) GetMapData(args *RPCArgs, reply *RPCReply) error {
 		}
 	}
 	delete(c.MapProcess, args.Index)
+	c.Mutex = 0
 	return c.JoinWorker(args, reply)
 }
 
 // 接收reduce结果
 func (c *Coordinator) GetReduceData(args *RPCArgs, reply *RPCReply) error {
+	for c.Mutex == 1 {
+		time.Sleep(time.Second)
+	}
+	c.Mutex = 1
 	ind, _ := strconv.Atoi(args.Index)
 	ind %= c.NReduce
 	kv := args.Kvdata[0]
@@ -108,6 +124,8 @@ func (c *Coordinator) GetReduceData(args *RPCArgs, reply *RPCReply) error {
 		c.Result[strconv.Itoa(ind)] = ByKey{kv}
 	}
 	delete(c.ReduceProcess, kv.Key)
+	//fmt.Printf("Reduce to do:%d reduce doing:%d", len(c.ReduceToDo), len(c.MapProcess))
+	c.Mutex = 0
 	return c.JoinWorker(args, reply)
 }
 
@@ -158,6 +176,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.ReduceProcess = Timer{}
 	c.MidResults = make(map[string][]string)
 	c.NReduce = nReduce
+	c.Result = storage{}
+	c.Mutex = 0
 	// Your code here.
 	c.server()
 	return &c
