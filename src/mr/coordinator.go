@@ -45,7 +45,7 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 
 // 为新加入的worker发送任务
 func (c *Coordinator) JoinWorker(args *RPCArgs, reply *RPCReply) error {
-	//fmt.Printf("Worker join start\n")
+	fmt.Printf("Worker join start\n")
 	for c.Mutex == 1 {
 		time.Sleep(time.Second)
 	}
@@ -55,7 +55,9 @@ func (c *Coordinator) JoinWorker(args *RPCArgs, reply *RPCReply) error {
 			reply.Task.Method = MAP
 			reply.Task.Obj = c.MapToDo[0]
 			c.MapProcess[c.MapToDo[0]] = time.Now()
-			c.MapToDo = c.MapToDo[1:]
+			if len(c.MapToDo) > 0 {
+				c.MapToDo = c.MapToDo[1:]
+			}
 			break
 		} else if len(c.MapProcess) != 0 {
 			for task := range c.MapProcess {
@@ -68,7 +70,9 @@ func (c *Coordinator) JoinWorker(args *RPCArgs, reply *RPCReply) error {
 			reply.Task.Method = REDUCE
 			reply.Task.Obj = RKeyValue{Key: c.ReduceToDo[0], Value: c.MidResults[c.ReduceToDo[0]][:]}
 			c.ReduceProcess[c.ReduceToDo[0]] = time.Now()
-			c.ReduceToDo = c.ReduceToDo[1:]
+			if len(c.ReduceToDo) > 0 {
+				c.ReduceToDo = c.ReduceToDo[1:]
+			}
 			break
 		} else if len(c.ReduceProcess) != 0 {
 			for task := range c.ReduceProcess {
@@ -124,7 +128,7 @@ func (c *Coordinator) GetReduceData(args *RPCArgs, reply *RPCReply) error {
 		c.Result[strconv.Itoa(ind)] = ByKey{kv}
 	}
 	delete(c.ReduceProcess, kv.Key)
-	//fmt.Printf("Reduce to do:%d reduce doing:%d", len(c.ReduceToDo), len(c.MapProcess))
+	fmt.Printf("Reduce to do:%d reduce doing:%d", len(c.ReduceToDo), len(c.MapProcess))
 	c.Mutex = 0
 	return c.JoinWorker(args, reply)
 }
